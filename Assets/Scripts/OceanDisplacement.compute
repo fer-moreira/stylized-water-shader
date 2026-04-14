@@ -1,0 +1,49 @@
+#pragma kernel CSMain
+
+StructuredBuffer<float3> originalVertexBuffer;
+RWStructuredBuffer<float3> vertexBuffer;
+
+float _Time;
+float _Speed;
+float _BandSize;
+float _Spacing;
+float _Angle;
+float _Strength;
+float _Softness;
+
+float4x4 _LocalToWorld;
+float4x4 _WorldToLocal;
+
+[numthreads(64, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint numStructs, stride;
+    originalVertexBuffer.GetDimensions(numStructs, stride);
+    if (id.x >= numStructs) return;
+
+    float3 localPos = originalVertexBuffer[id.x];
+
+    float3 worldPos = mul(_LocalToWorld, float4(localPos, 1.0)).xyz;
+
+    float2 pos2D = worldPos.xz;
+
+    float rad = radians(_Angle);
+    float2 dir = float2(cos(rad), sin(rad));
+
+    float projected = dot(pos2D, dir) - (_Time * _Speed);
+
+    float period = _BandSize + _Spacing;
+    float t = frac(projected / max(period, 0.0001));
+
+    float bandFraction = _BandSize / max(period, 0.0001);
+    float edge = bandFraction * _Softness;
+
+    float band = smoothstep(0.0, edge, t) * smoothstep(bandFraction + edge, bandFraction, t);
+    float waveHeight = saturate(band) * _Strength;
+
+    worldPos.y += waveHeight;
+
+    float3 finalLocalPos = mul(_WorldToLocal, float4(worldPos, 1.0)).xyz;
+
+    vertexBuffer[id.x] = finalLocalPos;
+}
